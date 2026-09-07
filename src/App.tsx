@@ -14,16 +14,28 @@ function calculate(a: number, b: number, op: BinaryOperator): number {
     case "÷":
       return a / b;
     case "^":
-      return Math.pow(a, b);
+      return power(a, b);
     case "%":
-      return (a / b) * 100;
+      return percentage(a, b);
     default:
       return 0;
   }
 }
 
-function copyToClipboard(text: string) {
-  navigator.clipboard.writeText(text);
+function power(a: number, b: number): number {
+  return Math.pow(a, b);
+}
+
+function squareRoot(a: number): number {
+  return Math.sqrt(a);
+}
+
+function percentage(value: number, percent: number): number {
+  return (value * percent) / 100;
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 function App() {
@@ -55,40 +67,39 @@ function App() {
   }
 
   function equals() {
+    if (stored === null || operator === null) return;
     const current = Number(display);
-    const result = calculate(
-      stored as number,
-      current,
-      operator as BinaryOperator,
-    );
-    const op = operator as BinaryOperator;
+    const result = round2(calculate(stored, current, operator));
+    const op = operator;
     setDisplay(String(result));
     setHistory((h) => [
       ...h.slice(-4),
       `${stored} ${op} ${current} = ${result}`,
     ]);
-    copyToClipboard(String(result));
     setStored(null);
     setOperator(null);
     setOverwrite(true);
   }
 
   function toggleSign() {
-    setDisplay(Math.negate(Number(display)).toString());
+    const current = Number(display);
+    const result = current * -1;
+    setDisplay(String(result));
+    setHistory((h) => [...h.slice(-4), `+/-${current} = ${result}`]);
   }
 
   function applyUnary() {
     const current = Number(display);
-    const result = Math.sqrt(current);
+    const result = round2(squareRoot(current));
     setDisplay(String(result));
     setHistory((h) => [...h.slice(-4), `√${current} = ${result}`]);
-    copyToClipboard(String(result));
     setOverwrite(true);
   }
 
   function clear() {
     setDisplay("0");
     setStored(null);
+    setOperator(null);
     setOverwrite(true);
   }
 
