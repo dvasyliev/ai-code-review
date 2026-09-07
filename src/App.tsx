@@ -12,13 +12,13 @@ function calculate(a: number, b: number, op: BinaryOperator): number {
     case "×":
       return a * b;
     case "÷":
-      return a / b;
+      return b === 0 ? NaN : a / b;
     case "^":
       return power(a, b);
     case "%":
       return percentage(a, b);
     default:
-      return 0;
+      return NaN;
   }
 }
 
@@ -27,7 +27,7 @@ function power(a: number, b: number): number {
 }
 
 function squareRoot(a: number): number {
-  return Math.sqrt(a);
+  return a < 0 ? NaN : Math.sqrt(a);
 }
 
 function percentage(value: number, percent: number): number {
@@ -35,7 +35,7 @@ function percentage(value: number, percent: number): number {
 }
 
 function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+  return Number.isFinite(n) && Math.abs(n) < 1e15 ? Math.round(n * 100) / 100 : n;
 }
 
 function App() {
@@ -52,13 +52,29 @@ function App() {
       setOverwrite(false);
       return;
     }
+    if (digit === "." && display.includes(".")) return;
     setDisplay(display + digit);
   }
 
   function chooseOperator(op: BinaryOperator) {
     const current = Number(display);
+    if (Number.isNaN(current)) {
+      setDisplay("Error");
+      setStored(null);
+      setOperator(null);
+      setOverwrite(true);
+      return;
+    }
     if (stored !== null && operator !== null && !overwrite) {
-      setStored(calculate(stored, current, operator));
+      const next = calculate(stored, current, operator);
+      if (!Number.isFinite(next)) {
+        setDisplay("Error");
+        setStored(null);
+        setOperator(null);
+        setOverwrite(true);
+        return;
+      }
+      setStored(next);
     } else {
       setStored(current);
     }
@@ -70,6 +86,13 @@ function App() {
     if (stored === null || operator === null) return;
     const current = Number(display);
     const result = round2(calculate(stored, current, operator));
+    if (!Number.isFinite(result)) {
+      setDisplay("Error");
+      setStored(null);
+      setOperator(null);
+      setOverwrite(true);
+      return;
+    }
     const op = operator;
     setDisplay(String(result));
     setHistory((h) => [
@@ -83,6 +106,7 @@ function App() {
 
   function toggleSign() {
     const current = Number(display);
+    if (Number.isNaN(current)) return;
     const result = current * -1;
     setDisplay(String(result));
     setHistory((h) => [...h.slice(-4), `+/-${current} = ${result}`]);
@@ -91,6 +115,11 @@ function App() {
   function applyUnary() {
     const current = Number(display);
     const result = round2(squareRoot(current));
+    if (!Number.isFinite(result)) {
+      setDisplay("Error");
+      setOverwrite(true);
+      return;
+    }
     setDisplay(String(result));
     setHistory((h) => [...h.slice(-4), `√${current} = ${result}`]);
     setOverwrite(true);
