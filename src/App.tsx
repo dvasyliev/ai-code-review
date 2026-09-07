@@ -35,7 +35,8 @@ function percentage(value: number, percent: number): number {
 }
 
 function round2(n: number): number {
-  return Number.isFinite(n) && Math.abs(n) < 1e15 ? Math.round(n * 100) / 100 : n;
+  if (!Number.isFinite(n) || Math.abs(n) >= 1e15) return n;
+  return Math.round(Number((n * 100).toPrecision(15))) / 100;
 }
 
 function App() {
@@ -53,6 +54,11 @@ function App() {
       return;
     }
     if (digit === "." && display.includes(".")) return;
+    if (display === "0" && digit !== ".") {
+      setDisplay(digit);
+      return;
+    }
+    if (display.replace(/[-.]/g, "").length >= 15) return;
     setDisplay(display + digit);
   }
 
@@ -66,7 +72,7 @@ function App() {
       return;
     }
     if (stored !== null && operator !== null && !overwrite) {
-      const next = calculate(stored, current, operator);
+      const next = round2(calculate(stored, current, operator));
       if (!Number.isFinite(next)) {
         setDisplay("Error");
         setStored(null);
@@ -109,6 +115,7 @@ function App() {
     if (Number.isNaN(current)) return;
     const result = current * -1;
     setDisplay(String(result));
+    setOverwrite(false);
     setHistory((h) => [...h.slice(-4), `+/-${current} = ${result}`]);
   }
 
@@ -117,6 +124,8 @@ function App() {
     const result = round2(squareRoot(current));
     if (!Number.isFinite(result)) {
       setDisplay("Error");
+      setStored(null);
+      setOperator(null);
       setOverwrite(true);
       return;
     }
@@ -138,7 +147,11 @@ function App() {
   return (
     <main className="grid min-h-svh place-items-center bg-neutral-100">
       <div className="w-80 rounded-2xl bg-neutral-900 p-4 shadow-xl">
-        <div className="mb-4 truncate rounded-lg bg-neutral-800 px-4 py-6 text-right text-4xl text-white">
+        <div
+          role="status"
+          aria-label="display"
+          className="mb-4 overflow-x-auto whitespace-nowrap rounded-lg bg-neutral-800 px-4 py-6 text-right text-4xl text-white"
+        >
           {display}
         </div>
         <div className="grid grid-cols-4 gap-2 mb-2">
