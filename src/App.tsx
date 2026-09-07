@@ -1,7 +1,6 @@
 import { useState } from "react";
 
-const BINARY_OPERATORS = ["+", "-", "×", "÷", "^", "%"] as const;
-type BinaryOperator = (typeof BINARY_OPERATORS)[number];
+type BinaryOperator = "+" | "-" | "×" | "÷" | "^" | "%";
 
 function calculate(a: number, b: number, op: BinaryOperator): number {
   switch (op) {
@@ -14,20 +13,10 @@ function calculate(a: number, b: number, op: BinaryOperator): number {
     case "÷":
       return b === 0 ? NaN : a / b;
     case "^":
-      return power(a, b);
+      return a ** b;
     case "%":
       return percentage(a, b);
-    default:
-      return NaN;
   }
-}
-
-function power(a: number, b: number): number {
-  return Math.pow(a, b);
-}
-
-function squareRoot(a: number): number {
-  return a < 0 ? NaN : Math.sqrt(a);
 }
 
 function percentage(value: number, percent: number): number {
@@ -39,6 +28,13 @@ function round2(n: number): number {
   return Math.round(Number((n * 100).toPrecision(15))) / 100;
 }
 
+function applyPending(a: number, b: number, op: BinaryOperator): number {
+  return round2(calculate(a, b, op));
+}
+
+const buttonClass =
+  "rounded-lg py-4 text-xl font-medium transition-colors active:scale-95";
+
 function App() {
   const [display, setDisplay] = useState("0");
   const [stored, setStored] = useState<number | null>(null);
@@ -46,6 +42,17 @@ function App() {
   const [overwrite, setOverwrite] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
+
+  function reset(text = "0") {
+    setDisplay(text);
+    setStored(null);
+    setOperator(null);
+    setOverwrite(true);
+  }
+
+  function pushHistory(entry: string) {
+    setHistory((h) => [...h.slice(-4), entry]);
+  }
 
   function inputDigit(digit: string) {
     if (overwrite) {
@@ -64,20 +71,14 @@ function App() {
 
   function chooseOperator(op: BinaryOperator) {
     const current = Number(display);
-    if (Number.isNaN(current)) {
-      setDisplay("Error");
-      setStored(null);
-      setOperator(null);
-      setOverwrite(true);
+    if (!Number.isFinite(current)) {
+      reset("Error");
       return;
     }
     if (stored !== null && operator !== null && !overwrite) {
-      const next = round2(calculate(stored, current, operator));
+      const next = applyPending(stored, current, operator);
       if (!Number.isFinite(next)) {
-        setDisplay("Error");
-        setStored(null);
-        setOperator(null);
-        setOverwrite(true);
+        reset("Error");
         return;
       }
       setStored(next);
@@ -91,23 +92,13 @@ function App() {
   function equals() {
     if (stored === null || operator === null) return;
     const current = Number(display);
-    const result = round2(calculate(stored, current, operator));
+    const result = applyPending(stored, current, operator);
     if (!Number.isFinite(result)) {
-      setDisplay("Error");
-      setStored(null);
-      setOperator(null);
-      setOverwrite(true);
+      reset("Error");
       return;
     }
-    const op = operator;
-    setDisplay(String(result));
-    setHistory((h) => [
-      ...h.slice(-4),
-      `${stored} ${op} ${current} = ${result}`,
-    ]);
-    setStored(null);
-    setOperator(null);
-    setOverwrite(true);
+    pushHistory(`${stored} ${operator} ${current} = ${result}`);
+    reset(String(result));
   }
 
   function toggleSign() {
@@ -116,33 +107,31 @@ function App() {
     const result = current * -1;
     setDisplay(String(result));
     setOverwrite(false);
-    setHistory((h) => [...h.slice(-4), `+/-${current} = ${result}`]);
   }
 
   function applyUnary() {
     const current = Number(display);
-    const result = round2(squareRoot(current));
+    const result = round2(Math.sqrt(current));
     if (!Number.isFinite(result)) {
-      setDisplay("Error");
-      setStored(null);
-      setOperator(null);
-      setOverwrite(true);
+      reset("Error");
       return;
     }
+    pushHistory(`√${current} = ${result}`);
     setDisplay(String(result));
-    setHistory((h) => [...h.slice(-4), `√${current} = ${result}`]);
     setOverwrite(true);
   }
 
-  function clear() {
-    setDisplay("0");
-    setStored(null);
-    setOperator(null);
-    setOverwrite(true);
-  }
-
-  const buttonClass =
-    "rounded-lg py-4 text-xl font-medium transition-colors active:scale-95";
+  const opButton = (op: BinaryOperator) => (
+    <button
+      type="button"
+      onClick={() => chooseOperator(op)}
+      className={`${buttonClass} bg-orange-500 text-white hover:bg-orange-400 ${
+        operator === op && overwrite ? "ring-2 ring-white" : ""
+      }`}
+    >
+      {op}
+    </button>
+  );
 
   return (
     <main className="grid min-h-svh place-items-center bg-neutral-100">
@@ -196,7 +185,7 @@ function App() {
         <div className="grid grid-cols-4 gap-2">
           <button
             type="button"
-            onClick={clear}
+            onClick={() => reset()}
             className={`${buttonClass} col-span-2 bg-neutral-700 text-white hover:bg-neutral-600`}
           >
             C
@@ -208,15 +197,7 @@ function App() {
           >
             Hist
           </button>
-          <button
-            type="button"
-            onClick={() => chooseOperator("÷")}
-            className={`${buttonClass} bg-orange-500 text-white hover:bg-orange-400 ${
-              operator === "÷" && overwrite ? "ring-2 ring-white" : ""
-            }`}
-          >
-            ÷
-          </button>
+          {opButton("÷")}
 
           {["7", "8", "9"].map((digit) => (
             <button
@@ -228,15 +209,7 @@ function App() {
               {digit}
             </button>
           ))}
-          <button
-            type="button"
-            onClick={() => chooseOperator("×")}
-            className={`${buttonClass} bg-orange-500 text-white hover:bg-orange-400 ${
-              operator === "×" && overwrite ? "ring-2 ring-white" : ""
-            }`}
-          >
-            ×
-          </button>
+          {opButton("×")}
 
           {["4", "5", "6"].map((digit) => (
             <button
@@ -248,15 +221,7 @@ function App() {
               {digit}
             </button>
           ))}
-          <button
-            type="button"
-            onClick={() => chooseOperator("-")}
-            className={`${buttonClass} bg-orange-500 text-white hover:bg-orange-400 ${
-              operator === "-" && overwrite ? "ring-2 ring-white" : ""
-            }`}
-          >
-            -
-          </button>
+          {opButton("-")}
 
           {["1", "2", "3"].map((digit) => (
             <button
@@ -268,15 +233,7 @@ function App() {
               {digit}
             </button>
           ))}
-          <button
-            type="button"
-            onClick={() => chooseOperator("+")}
-            className={`${buttonClass} bg-orange-500 text-white hover:bg-orange-400 ${
-              operator === "+" && overwrite ? "ring-2 ring-white" : ""
-            }`}
-          >
-            +
-          </button>
+          {opButton("+")}
 
           <button
             type="button"
