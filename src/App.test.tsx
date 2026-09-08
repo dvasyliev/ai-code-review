@@ -3,14 +3,6 @@ import { render, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 
-/**
- * Interaction tests for the calculator.
- *
- * Assertions still marked BUG pin the behaviour the component has today, not
- * the behaviour a user would expect. They are here so the suite is green and
- * the defect is visible; flip them when the corresponding fix lands.
- */
-
 function setup() {
   const user = userEvent.setup();
   const { container } = render(<App />);
@@ -35,6 +27,8 @@ function setup() {
     key,
     press,
     display: () => ui.getByRole("status").textContent,
+    /** The history panel; only present while it is open. */
+    log: () => within(ui.getByRole("log", { name: "history" })),
     /** Same input path as press, for sequences of many identical presses. */
     bulk: (name: string, times: number) =>
       press(...Array<string>(times).fill(name)),
@@ -83,11 +77,24 @@ describe("digit and decimal input", () => {
     expect(display()).toBe("999999999999999");
   });
 
-  it("BUG: at 15 digits the '.' press is silently dropped", async () => {
-    const { press, bulk, display } = setup();
+  it("says why a press was rejected once the 15-digit cap is reached", async () => {
+    const { press, bulk, ui } = setup();
     await bulk("9", 15);
-    await press(".", "5");
-    expect(display()).toBe("999999999999999"); // no decimal, no feedback
+    expect(ui.queryByRole("alert")).toBeNull();
+    await press("9");
+    expect(ui.getByRole("alert")).toHaveTextContent("at most 15 digits");
+    await press("C");
+    expect(ui.queryByRole("alert")).toBeNull();
+  });
+
+  it("accepts a decimal point at the 15-digit cap, but no further digits", async () => {
+    const { press, bulk, display, ui } = setup();
+    await bulk("9", 15);
+    await press(".");
+    expect(display()).toBe("999999999999999.");
+    await press("5");
+    expect(display()).toBe("999999999999999.");
+    expect(ui.getByRole("alert")).toHaveTextContent("at most 15 digits");
   });
 
   it("C resets the display and any pending operation", async () => {
@@ -106,7 +113,6 @@ describe("binary operations", () => {
     ["multiplies", ["6", "×", "7"], "42"],
     ["divides", ["8", "÷", "2"], "4"],
     ["raises to a power", ["2", "x^y", "1", "0"], "1024"],
-    ["treats % as 'b percent of a'", ["5", "0", "%", "1", "0"], "5"],
   ];
 
   it.each(cases)("%s", async (_name, entry, result) => {
@@ -121,6 +127,46 @@ describe("binary operations", () => {
     expect(key("+").className).toContain("ring-2");
     await press("3");
     expect(key("+").className).not.toContain("ring-2");
+  });
+
+  it("swaps the operator when two are pressed in a row", async () => {
+    const { press, display } = setup();
+    await press("8", "+", "×", "2", "=");
+    expect(display()).toBe("16");
+  });
+});
+
+describe("percent", () => {
+  it("reads as a percentage of the left operand when adding", async () => {
+    const { press, display } = setup();
+    await press("5", "0", "+", "1", "0", "%");
+    expect(display()).toBe("5");
+    await press("=");
+    expect(display()).toBe("55");
+  });
+
+  it("subtracts a percentage of the left operand", async () => {
+    const { press, display } = setup();
+    await press("1", "0", "0", "-", "1", "0", "%", "=");
+    expect(display()).toBe("90");
+  });
+
+  it("is a plain division by 100 when multiplying", async () => {
+    const { press, display } = setup();
+    await press("5", "0", "×", "1", "0", "%", "=");
+    expect(display()).toBe("5");
+  });
+
+  it("is a plain division by 100 with no operation pending", async () => {
+    const { press, display } = setup();
+    await press("5", "0", "%");
+    expect(display()).toBe("0.5");
+  });
+
+  it("keeps small values instead of rounding them away", async () => {
+    const { press, display } = setup();
+    await press("0", ".", "0", "7", "%");
+    expect(display()).toBe("0.0007");
   });
 });
 
@@ -151,16 +197,22 @@ describe("unary operations", () => {
     expect(display()).toBe("-57");
   });
 
-  it("BUG: +/- drops a trailing decimal point — '5.' +/- '2' gives -52", async () => {
+  it("keeps a trailing decimal point through +/-", async () => {
     const { press, display } = setup();
     await press("5", ".", "+/-", "2");
-    expect(display()).toBe("-52"); // the user meant -5.2
+    expect(display()).toBe("-5.2");
   });
 
-  it("BUG: '.' then +/- then '5' gives 5, not -0.5", async () => {
+  it("keeps the sign on a bare decimal point: '.' +/- '5' is -0.5", async () => {
     const { press, display } = setup();
     await press(".", "+/-", "5");
-    expect(display()).toBe("5"); // String(-0) is "0", so the decimal is lost
+    expect(display()).toBe("-0.5");
+  });
+
+  it("+/- is reversible", async () => {
+    const { press, display } = setup();
+    await press("5", "+/-", "+/-");
+    expect(display()).toBe("5");
   });
 });
 
@@ -177,135 +229,189 @@ describe("chaining", () => {
     expect(display()).toBe("9");
   });
 
-  it("BUG: the intermediate result is never shown — 2 ÷ 3 × leaves 3 on screen", async () => {
+  it("shows the intermediate result when the chain folds", async () => {
     const { press, display } = setup();
     await press("2", "÷", "3", "×");
-    expect(display()).toBe("3"); // stored is 0.67, the display never says so
+    expect(display()).toBe("0.666666666667");
   });
 
-  it("BUG: rounding the intermediate breaks the chain — 2 ÷ 3 × 3 gives 2.01", async () => {
+  it("keeps full precision through a chain: 2 ÷ 3 × 3 is 2", async () => {
     const { press, display } = setup();
     await press("2", "÷", "3", "×", "3", "=");
-    expect(display()).toBe("2.01"); // by hand: 2
+    expect(display()).toBe("2");
   });
 
-  it("BUG: pressing = twice does not repeat the operation", async () => {
+  it("repeats the last operation when = is pressed again", async () => {
     const { press, display } = setup();
-    await press("2", "+", "3", "=", "=");
-    expect(display()).toBe("5"); // most calculators give 8
+    await press("2", "+", "3", "=");
+    expect(display()).toBe("5");
+    await press("=");
+    expect(display()).toBe("8");
+    await press("=");
+    expect(display()).toBe("11");
   });
 
-  it("BUG: '50 + 10 %' folds the addition first, so = gives 10% of 60", async () => {
+  it("repeats the last operation onto a freshly entered number", async () => {
     const { press, display } = setup();
-    await press("5", "0", "+", "1", "0", "%", "=");
-    expect(display()).toBe("6");
+    await press("2", "+", "3", "=", "9", "=");
+    expect(display()).toBe("12");
+  });
+
+  it("C clears the repeat, so = does nothing after it", async () => {
+    const { press, display } = setup();
+    await press("2", "+", "3", "=", "C", "9", "=");
+    expect(display()).toBe("9");
+  });
+
+  it("folds a pending operation into a square root: 9 + 4 √ × 2 is 22", async () => {
+    const { press, display } = setup();
+    await press("9", "+", "4", "√", "×", "2", "=");
+    expect(display()).toBe("22");
+  });
+
+  it("gives the same answer whether √ is followed by an operator or by =", async () => {
+    const withEquals = setup();
+    await withEquals.press("9", "+", "4", "√", "=");
+    expect(withEquals.display()).toBe("11");
+
+    const withOperator = setup();
+    await withOperator.press("9", "+", "4", "√", "+", "0", "=");
+    expect(withOperator.display()).toBe("11");
+  });
+
+  it("folds a pending operation into a percentage", async () => {
+    const { press, display } = setup();
+    await press("2", "0", "0", "+", "1", "0", "%", "+", "5", "=");
+    expect(display()).toBe("225"); // 200 + 10% is 220, then + 5
   });
 });
 
 describe("error states", () => {
-  it("division by zero shows Error", async () => {
+  it("names division by zero", async () => {
     const { press, display } = setup();
     await press("5", "÷", "0", "=");
-    expect(display()).toBe("Error");
+    expect(display()).toBe("Cannot divide by zero");
   });
 
-  it("square root of a negative shows Error", async () => {
+  it("names a square root of a negative", async () => {
     const { press, display } = setup();
     await press("5", "+/-", "√");
-    expect(display()).toBe("Error");
+    expect(display()).toBe("Cannot take √ of a negative number");
   });
 
-  it("a digit starts a fresh entry after Error", async () => {
+  it("names an out-of-range result", async () => {
+    const { press, display } = setup();
+    await press("0", "x^y", "1", "+/-", "=");
+    expect(display()).toBe("Result is out of range");
+  });
+
+  it("names an overflow produced by a percentage", async () => {
+    const { press, bulk, display } = setup();
+    await press("1");
+    await bulk("0", 14); // 1e14
+    await press("x^y", "2", "1", "="); // 1e294
+    await press("+", "%"); // 1e294 percent of 1e294
+    expect(display()).toBe("Result is out of range");
+  });
+
+  it("names a result that is not a real number", async () => {
+    const { press, display } = setup();
+    await press("8", "+/-", "x^y", "0", ".", "5", "=");
+    expect(display()).toBe("Not a real number");
+  });
+
+  it("reports a non-finite intermediate on the operator press", async () => {
+    const { press, display } = setup();
+    await press("0", "x^y", "1", "+/-", "+");
+    expect(display()).toBe("Result is out of range");
+  });
+
+  it("a digit starts a fresh entry after an error", async () => {
     const { press, display } = setup();
     await press("5", "÷", "0", "=", "7");
     expect(display()).toBe("7");
   });
 
-  it("√ on Error stays Error", async () => {
+  it("√ on an error leaves the error standing", async () => {
     const { press, display } = setup();
     await press("5", "÷", "0", "=", "√");
-    expect(display()).toBe("Error");
+    expect(display()).toBe("Cannot divide by zero");
   });
 
-  it("an operator after Error clears the pending state", async () => {
+  it("+/- on an error leaves the error standing", async () => {
+    const { press, display } = setup();
+    await press("5", "÷", "0", "=", "+/-");
+    expect(display()).toBe("Cannot divide by zero");
+  });
+
+  it("% on an error leaves the error standing", async () => {
+    const { press, display } = setup();
+    await press("5", "÷", "0", "=", "%");
+    expect(display()).toBe("Cannot divide by zero");
+  });
+
+  it("= on an error leaves the error standing", async () => {
+    const { press, display } = setup();
+    await press("5", "÷", "0", "=", "=");
+    expect(display()).toBe("Cannot divide by zero");
+  });
+
+  it("an operator after an error clears the pending state", async () => {
     const { press, display } = setup();
     await press("5", "÷", "0", "=", "+", "2", "=");
-    expect(display()).toBe("2"); // the 2 is left standing, nothing is applied to it
+    expect(display()).toBe("2");
   });
 
   it("a failed √ clears the pending operation", async () => {
     const { press, display } = setup();
     await press("9", "+", "5", "+/-", "√");
-    expect(display()).toBe("Error");
+    expect(display()).toBe("Cannot take √ of a negative number");
     await press("7", "=");
     expect(display()).toBe("7");
   });
-
-  it("0 ^ -1 is Infinity and surfaces as the same bare Error", async () => {
-    const { press, display } = setup();
-    await press("0", "x^y", "1", "+/-", "=");
-    expect(display()).toBe("Error");
-  });
-
-  it("a non-finite intermediate errors on the next operator press, not on =", async () => {
-    const { press, display } = setup();
-    await press("0", "x^y", "1", "+/-", "+");
-    expect(display()).toBe("Error");
-  });
-
-  it("(-8) ^ 0.5 is NaN and surfaces as the same bare Error", async () => {
-    const { press, display } = setup();
-    await press("8", "+/-", "x^y", "0", ".", "5", "=");
-    expect(display()).toBe("Error");
-  });
 });
 
-describe("rounding and float precision", () => {
-  it("rounds away the classic 0.1 + 0.2 artefact", async () => {
+describe("precision", () => {
+  it("hides the classic 0.1 + 0.2 artefact", async () => {
     const { press, display } = setup();
     await press("0", ".", "1", "+", "0", ".", "2", "=");
     expect(display()).toBe("0.3");
   });
 
-  it("rounds a positive half up: 1.005 + 0 gives 1.01", async () => {
-    const { press, display } = setup();
-    await press("1", ".", "0", "0", "5", "+", "0", "=");
-    expect(display()).toBe("1.01");
-  });
-
-  it("BUG: a negative half rounds the other way — -1.005 + 0 gives -1", async () => {
-    const { press, display } = setup();
-    await press("1", ".", "0", "0", "5", "+/-", "+", "0", "=");
-    expect(display()).toBe("-1"); // by hand: -1.01
-  });
-
-  it("BUG: -8.165 + 0 gives -8.16 while 8.165 gives 8.17", async () => {
-    const { press, display } = setup();
-    await press("8", ".", "1", "6", "5", "+/-", "+", "0", "=");
-    expect(display()).toBe("-8.16");
-  });
-
-  it("BUG: 0.001 + 0 gives 0 — anything under half a cent is erased", async () => {
+  it("keeps a value smaller than a cent", async () => {
     const { press, display } = setup();
     await press("0", ".", "0", "0", "1", "+", "0", "=");
-    expect(display()).toBe("0");
+    expect(display()).toBe("0.001");
   });
 
-  it("BUG: 0.07 % 1 gives 0", async () => {
+  it("keeps three decimal places", async () => {
     const { press, display } = setup();
-    await press("0", ".", "0", "7", "%", "1", "=");
-    expect(display()).toBe("0"); // by hand: 0.0007
+    await press("8", ".", "1", "6", "5", "+", "0", "=");
+    expect(display()).toBe("8.165");
   });
 
-  it("BUG: 1 ÷ 3 × 3 gives 0.99", async () => {
+  it("treats a negative the same as its positive counterpart", async () => {
+    const { press, display } = setup();
+    await press("8", ".", "1", "6", "5", "+/-", "+", "0", "=");
+    expect(display()).toBe("-8.165");
+  });
+
+  it("round-trips a division: 1 ÷ 3 × 3 is 1", async () => {
     const { press, display } = setup();
     await press("1", "÷", "3", "=");
-    expect(display()).toBe("0.33");
+    expect(display()).toBe("0.333333333333");
     await press("×", "3", "=");
-    expect(display()).toBe("0.99"); // by hand: 1
+    expect(display()).toBe("1");
   });
 
-  it("leaves results at or above 1e15 unrounded", async () => {
+  it("keeps every digit of a 15-digit integer", async () => {
+    const { press, display } = setup();
+    await press("1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "1", "2", "3", "4", "5");
+    await press("+", "0", "=");
+    expect(display()).toBe("123456789012345");
+  });
+
+  it("carries past 15 digits without truncating", async () => {
     const { press, bulk, display } = setup();
     await bulk("9", 15);
     await press("+", "1", "=");
@@ -314,61 +420,80 @@ describe("rounding and float precision", () => {
 });
 
 describe("exponent-notation results", () => {
-  it("BUG: a result shown in exponent form can be appended to", async () => {
+  it("shows a very large result in exponent form", async () => {
     const { press, bulk, display } = setup();
     await press("1");
-    await bulk("0", 14); // 1e14
+    await bulk("0", 14);
     await press("×", "1");
     await bulk("0", 14);
     await press("=");
     expect(display()).toBe("1e+28");
-    await press("+/-"); // clears overwrite
+  });
+
+  it("refuses to append digits to an exponent-form result", async () => {
+    const { press, bulk, display } = setup();
+    await press("1");
+    await bulk("0", 14);
+    await press("×", "1");
+    await bulk("0", 14);
+    await press("=", "+/-");
+    expect(display()).toBe("-1e+28");
     await press("5");
-    expect(display()).toBe("-1e+285"); // the 15-digit cap does not see this
-    await press("+", "0", "=");
-    expect(display()).toBe("-1e+285");
+    expect(display()).toBe("5");
   });
 });
 
 describe("history panel", () => {
   it("is hidden until Hist is pressed", async () => {
-    const { press, ui } = setup();
+    const { press, ui, log } = setup();
     await press("2", "+", "3", "=");
-    expect(ui.queryByText("2 + 3 = 5")).toBeNull();
+    expect(ui.queryByRole("log", { name: "history" })).toBeNull();
     await press("Hist");
-    expect(ui.getByText("2 + 3 = 5")).toBeInTheDocument();
+    expect(log().getByText("2 + 3 = 5")).toBeInTheDocument();
   });
 
   it("toggles back off", async () => {
     const { press, ui } = setup();
     await press("2", "+", "3", "=", "Hist", "Hist");
-    expect(ui.queryByText("2 + 3 = 5")).toBeNull();
+    expect(ui.queryByRole("log", { name: "history" })).toBeNull();
   });
 
   it("keeps only the last five entries", async () => {
-    const { press, ui } = setup();
+    const { press, log } = setup();
     await press("4", "√", "√", "√", "√", "√", "√", "Hist");
-    expect(ui.queryByText("√4 = 2")).toBeNull();
-    expect(ui.getByText("√2 = 1.41")).toBeInTheDocument();
-    expect(ui.getByText("√1.04 = 1.02")).toBeInTheDocument();
+    expect(log().queryByText("√4 = 2")).toBeNull();
+    expect(log().getAllByText(/^√/)).toHaveLength(5);
+  });
+
+  it("survives C", async () => {
+    const { press, log } = setup();
+    await press("2", "+", "3", "=", "C", "Hist");
+    expect(log().getByText("2 + 3 = 5")).toBeInTheDocument();
+  });
+
+  it("logs both halves of a chain", async () => {
+    const { press, log } = setup();
+    await press("2", "÷", "3", "×", "3", "=", "Hist");
+    expect(log().getByText("2 ÷ 3 = 0.666666666667")).toBeInTheDocument();
+    expect(log().getByText("0.666666666667 × 3 = 2")).toBeInTheDocument();
+  });
+
+  it("logs a repeated = as its own entry", async () => {
+    const { press, log } = setup();
+    await press("2", "+", "3", "=", "=", "Hist");
+    expect(log().getByText("2 + 3 = 5")).toBeInTheDocument();
+    expect(log().getByText("5 + 3 = 8")).toBeInTheDocument();
   });
 
   it("+/- is an edit, not an operation, so nothing is logged", async () => {
-    const { press, ui } = setup();
+    const { press, log } = setup();
     await press("5", "+/-", "Hist");
-    expect(ui.queryByText("+/-5 = -5")).toBeNull();
+    expect(log().queryByText(/./)).toBeNull();
   });
 
-  it("BUG: history records the rounded intermediate, not what was entered", async () => {
-    const { press, ui } = setup();
-    await press("2", "÷", "3", "×", "3", "=", "Hist");
-    expect(ui.getByText("0.67 × 3 = 2.01")).toBeInTheDocument();
-    expect(ui.queryByText(/2 ÷ 3/)).toBeNull(); // the first half is never logged
-  });
-
-  it("BUG: a % entry reads like a modulo", async () => {
-    const { press, ui } = setup();
-    await press("5", "0", "+", "1", "0", "%", "=", "Hist");
-    expect(ui.getByText("60 % 10 = 6")).toBeInTheDocument();
+  it("% is an edit, not an operation, so nothing is logged", async () => {
+    const { press, log } = setup();
+    await press("5", "0", "+", "1", "0", "%", "Hist");
+    expect(log().queryByText(/./)).toBeNull();
   });
 });
