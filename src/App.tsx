@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type JSX } from "react";
 
 type BinaryOperator = "+" | "-" | "×" | "÷" | "^";
 
@@ -93,7 +93,7 @@ function operandOf(entry: Exclude<Entry, { kind: "error" }>): number {
 const buttonClass =
   "rounded-lg py-4 text-xl font-medium transition-colors active:scale-95";
 
-function App() {
+function App(): JSX.Element {
   const [entry, setEntry] = useState<Entry>({ kind: "operand", value: 0 });
   const [pending, setPending] = useState<Pending | null>(null);
   const [repeat, setRepeat] = useState<Repeat | null>(null);
@@ -269,6 +269,7 @@ function App() {
     <button
       type="button"
       onClick={() => chooseOperator(op)}
+      aria-pressed={isPending(op)}
       className={`${buttonClass} bg-orange-500 text-white hover:bg-orange-400 ${
         isPending(op) ? "ring-2 ring-white" : ""
       }`}
@@ -277,10 +278,11 @@ function App() {
     </button>
   );
 
-  const functionButton = (label: string, onClick: () => void, active = false) => (
+  const functionButton = (label: string, onClick: () => void, active?: boolean) => (
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={`${buttonClass} bg-blue-600 text-white hover:bg-blue-500 ${
         active ? "ring-2 ring-white" : ""
       }`}
@@ -339,6 +341,7 @@ function App() {
           <button
             type="button"
             onClick={() => setShowHistory((shown) => !shown)}
+            aria-pressed={showHistory}
             className={`${buttonClass} bg-purple-600 text-white hover:bg-purple-500`}
           >
             Hist

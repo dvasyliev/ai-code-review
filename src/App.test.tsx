@@ -121,12 +121,12 @@ describe("binary operations", () => {
     expect(display()).toBe(result);
   });
 
-  it("highlights the pending operator until the next entry", async () => {
+  it("marks the pending operator as pressed until the next entry", async () => {
     const { press, key } = setup();
     await press("5", "+");
-    expect(key("+").className).toContain("ring-2");
+    expect(key("+")).toHaveAttribute("aria-pressed", "true");
     await press("3");
-    expect(key("+").className).not.toContain("ring-2");
+    expect(key("+")).toHaveAttribute("aria-pressed", "false");
   });
 
   it("swaps the operator when two are pressed in a row", async () => {
@@ -450,6 +450,13 @@ describe("history panel", () => {
     expect(ui.queryByRole("log", { name: "history" })).toBeNull();
     await press("Hist");
     expect(log().getByText("2 + 3 = 5")).toBeInTheDocument();
+  });
+
+  it("marks Hist as pressed while the panel is open", async () => {
+    const { press, key } = setup();
+    expect(key("Hist")).toHaveAttribute("aria-pressed", "false");
+    await press("Hist");
+    expect(key("Hist")).toHaveAttribute("aria-pressed", "true");
   });
 
   it("toggles back off", async () => {
