@@ -8,8 +8,8 @@ A small calculator in React, used as the subject of an AI code-review exercise. 
 
 #### Agentic AI Courses
 
-🎛️ [Harness Engineering: Modern AI Software Development Bootcamp](https://go.dvasyliev.com/harness-engineering)
-🦞 [OpenClaw for Developers: AI Coding Crash Course](https://go.dvasyliev.com/openclaw)
+🎛️ [Harness Engineering: Modern AI Software Development Bootcamp](https://go.dvasyliev.com/harness-engineering)\
+🦞 [OpenClaw for Developers: AI Coding Crash Course](https://go.dvasyliev.com/openclaw)\
 🧑🏻‍💻 [AI Code Review: Evaluate Python Code with Confidence](https://go.dvasyliev.com/evaluating-ai-code)\
 
 #### AI Tools Courses
