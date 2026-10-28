@@ -4,11 +4,13 @@ About me ◽️ 🎬 Udemy Instructor ◽️ 👨🏻‍💻 Front-End Engineer 
 
 A small calculator in React, used as the subject of an AI code-review exercise. The repository contains both the application and the AI configuration (rules and skills) that guide how an AI assistant works on it.
 
-# My Courses
+# All My Courses
 
 #### Agentic AI Courses
 
+🎛️ [Harness Engineering: Modern AI Software Development Bootcamp](https://go.dvasyliev.com/harness-engineering)
 🦞 [OpenClaw for Developers: AI Coding Crash Course](https://go.dvasyliev.com/openclaw)
+🧑🏻‍💻 [AI Code Review: Evaluate Python Code with Confidence](https://go.dvasyliev.com/evaluating-ai-code)\
 
 #### AI Tools Courses
 
